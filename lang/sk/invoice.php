@@ -9,6 +9,7 @@ return [
     'due_date' => 'Dátum splatnosti',
     'delivery_date' => 'Dátum dodania',
     'payment_method' => 'Spôsob platby',
+    'order_number' => 'Číslo objednávky',
     'description' => 'Popis položky',
     'quantity' => 'Množstvo',
     'unit' => 'Jedn.',

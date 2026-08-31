@@ -9,6 +9,7 @@ return [
     'due_date' => 'Due date',
     'delivery_date' => 'Delivery date',
     'payment_method' => 'Payment method',
+    'order_number' => 'Order number',
     'description' => 'Item description',
     'quantity' => 'Quantity',
     'unit' => 'Unit',

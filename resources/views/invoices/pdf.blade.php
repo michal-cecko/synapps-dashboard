@@ -335,6 +335,12 @@
                     <div class="date-value">{{ $invoice->payment_method->translation() }}</div>
                 </div>
             @endif
+            @if($invoice->order_number)
+                <div class="date-item">
+                    <div class="date-label">{{ __('invoice.order_number') }}</div>
+                    <div class="date-value">{{ $invoice->order_number }}</div>
+                </div>
+            @endif
         </div>
 
         @if($invoice->payment_method === \App\Enums\Invoices\PaymentMethodEnum::BANK_TRANSFER && (!empty($seller['bank_iban']) || !empty($seller['bank_account_number'])))
