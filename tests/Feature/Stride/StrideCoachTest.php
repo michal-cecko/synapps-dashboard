@@ -175,7 +175,13 @@ class StrideCoachTest extends TestCase
     {
         $conversation = $this->newConversation();
         $session = Session::where('user_id', $this->user->id)->where('status', 'today')->firstOrFail();
-        $target = today()->addDays(2)->toDateString();
+        // Derived from the fixture, never hardcoded from the calendar: the demo seeder
+        // anchors its week to Monday and always pins the "today" session to Thursday,
+        // so a literal today()->addDays(2) IS that Thursday every Tuesday and the
+        // "staged only" assertion below would compare the date with itself. Stepping
+        // two days past the later of today and the session's own date keeps the target
+        // both in the future (move_session refuses the past) and off the day it sits on.
+        $target = $session->scheduled_date->copy()->max(today())->addDays(2)->toDateString();
 
         $this->provider
             ->push(FakeCoachProvider::toolCall('move_session', ['date' => $target, 'reason' => 'Legs already done today.']))
