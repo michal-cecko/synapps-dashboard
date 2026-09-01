@@ -7,6 +7,21 @@ on:
   pull_request:
     branches: [main]
 
+# Only one CI run per ref may be in flight.
+#
+# Each run pins Dokploy to its OWN commit (`dockerImage: ...sha-${{ github.sha }}`)
+# and then deploys. Without this group, merges in quick succession race and the last
+# application.update to arrive wins regardless of age — on 2026-09-01 that left bcz-app
+# running a commit older than three merged PRs, while every run reported deploy: success.
+#
+# Queue rather than cancel on the deploy branch: the deploy job loops over more than one
+# Dokploy application (web and worker), so cancelling mid-loop could leave them pinned to
+# different images. The newest run therefore always deploys last. Superseded pull-request
+# runs are cancelled — nothing deploys there.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
