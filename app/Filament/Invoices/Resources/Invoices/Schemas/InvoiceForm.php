@@ -2,6 +2,7 @@
 
 namespace App\Filament\Invoices\Resources\Invoices\Schemas;
 
+use App\Enums\Common\CountryEnum;
 use App\Enums\Common\CurrencyEnum;
 use App\Enums\Common\LocaleEnum;
 use App\Enums\Invoices\InvoiceStatusEnum;
@@ -14,6 +15,7 @@ use App\Models\Invoices\ServiceCatalogItem;
 use App\Models\Invoices\VatRate;
 use App\Services\Invoices\ExchangeRateService;
 use App\Services\Invoices\InvoiceNumberService;
+use App\Services\Invoices\InvoicePdfService;
 use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -107,6 +109,10 @@ class InvoiceForm
                             ->options(fn () => Customer::query()->pluck('name', 'id'))
                             ->searchable()
                             ->required()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set): void {
+                                self::fillBuyerSnapshotFromCustomer($state, $set);
+                            })
                             ->createOptionForm([
                                 TextInput::make('name')
                                     ->label('Meno / Názov')
@@ -187,6 +193,50 @@ class InvoiceForm
                             ->maxLength(100),
 
                     ])->columns(2),
+
+                Section::make('Údaje odberateľa na faktúre')
+                    ->description('Predvyplnia sa z karty odberateľa pri jeho výbere a uložia sa priamo na faktúru. Úpravy tu platia len pre túto faktúru — kartu odberateľa nezmenia, a neskoršia zmena karty túto faktúru neovplyvní.')
+                    ->collapsible()
+                    ->schema([
+                        TextInput::make('buyer_snapshot.name')
+                            ->label('Meno / Názov')
+                            ->required()
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.company_name')
+                            ->label('Názov firmy')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.email')
+                            ->label('Email')
+                            ->email()
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.phone')
+                            ->label('Telefón')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.business_number')
+                            ->label('IČO')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.tax_number')
+                            ->label('DIČ')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.vat_number')
+                            ->label('IČ DPH')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.web')
+                            ->label('Web')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.street')
+                            ->label('Ulica')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.city')
+                            ->label('Mesto')
+                            ->maxLength(255),
+                        TextInput::make('buyer_snapshot.zip')
+                            ->label('PSČ')
+                            ->maxLength(255),
+                        Select::make('buyer_snapshot.country_code')
+                            ->label('Krajina')
+                            ->options(CountryEnum::translations()),
+                    ])->columns(4),
 
                 Section::make('Dátumy')
                     ->schema([
@@ -451,6 +501,30 @@ class InvoiceForm
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    /**
+     * Copy the selected customer's data into the invoice's own buyer fields.
+     *
+     * Deliberately only called from the customer select's change event: the fields
+     * stay hand-editable afterwards, and re-rendering the form never overwrites an
+     * edit. Clearing the select leaves the already-filled data alone.
+     */
+    private static function fillBuyerSnapshotFromCustomer(mixed $customerId, Set $set): void
+    {
+        if (blank($customerId)) {
+            return;
+        }
+
+        $customer = Customer::find($customerId);
+
+        if (! $customer) {
+            return;
+        }
+
+        foreach (app(InvoicePdfService::class)->buildBuyerSnapshot($customer) as $key => $value) {
+            $set("buyer_snapshot.{$key}", $value);
+        }
     }
 
     private static function computeSubtotal(Get $get): float

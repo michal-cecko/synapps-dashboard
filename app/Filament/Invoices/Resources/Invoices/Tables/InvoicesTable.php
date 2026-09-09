@@ -6,12 +6,12 @@ use App\Enums\Common\CurrencyEnum;
 use App\Enums\Common\LocaleEnum;
 use App\Enums\Invoices\InvoiceStatusEnum;
 use App\Enums\Invoices\PaymentMethodEnum;
+use App\Filament\Invoices\Actions\SendInvoiceEmailAction;
 use App\Filament\Invoices\Resources\Invoices\InvoiceResource;
 use App\Models\Invoices\Customer;
 use App\Models\Invoices\Invoice;
 use App\Models\Invoices\InvoicePayment;
 use App\Services\Invoices\InvoiceCalculationService;
-use App\Services\Invoices\InvoiceEmailService;
 use App\Services\Invoices\InvoiceNumberService;
 use App\Services\Invoices\InvoicePdfService;
 use Filament\Actions\Action;
@@ -25,7 +25,6 @@ use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -238,54 +237,7 @@ class InvoicesTable
                             ]);
                         }),
 
-                    Action::make('sendEmail')
-                        ->label('Odoslať emailom')
-                        ->icon('heroicon-o-envelope')
-                        ->form([
-                            TextInput::make('email')
-                                ->label('Email')
-                                ->email()
-                                ->required()
-                                ->default(fn ($record) => $record->customer->email),
-                            TextInput::make('subject')
-                                ->label('Predmet')
-                                ->required()
-                                ->default(fn ($record) => 'Faktúra '.$record->invoice_number),
-                            Textarea::make('body')
-                                ->label('Správa')
-                                ->required()
-                                ->default('V prílohe posielame faktúru. Ďakujeme za spoluprácu.'),
-                            Select::make('locale')
-                                ->label('Jazyk PDF')
-                                ->options(LocaleEnum::translations())
-                                ->default(fn ($record) => $record->company->default_locale ?? 'sk')
-                                ->required(),
-                            FileUpload::make('attachments')
-                                ->label('Prílohy')
-                                ->multiple()
-                                ->storeFiles(false)
-                                ->acceptedFileTypes([
-                                    'application/pdf',
-                                    'application/msword',
-                                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                    'application/vnd.ms-excel',
-                                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                    'image/jpeg',
-                                    'image/png',
-                                    'application/zip',
-                                ])
-                                ->maxSize(10240),
-                        ])
-                        ->action(function ($record, array $data) {
-                            app(InvoiceEmailService::class)->sendInvoice(
-                                $record,
-                                $data['email'],
-                                $data['subject'],
-                                $data['body'],
-                                $data['locale'],
-                                $data['attachments'] ?? [],
-                            );
-                        }),
+                    SendInvoiceEmailAction::make(),
 
                     Action::make('duplicate')
                         ->label('Duplikovať')
@@ -325,7 +277,9 @@ class InvoicesTable
                             if ($company) {
                                 $newInvoice->seller_snapshot = $pdfService->buildSellerSnapshot($company);
                             }
-                            if ($record->customer) {
+                            // The replicated invoice already carries its own buyer data, which
+                            // may have been hand-edited; only rebuild it when it has none.
+                            if (blank($newInvoice->buyer_snapshot) && $record->customer) {
                                 $newInvoice->buyer_snapshot = $pdfService->buildBuyerSnapshot($record->customer);
                             }
 

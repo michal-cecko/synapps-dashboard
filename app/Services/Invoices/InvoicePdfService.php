@@ -12,6 +12,30 @@ use ZipArchive;
 
 class InvoicePdfService
 {
+    /**
+     * Customer fields baked into an invoice's `buyer_snapshot`.
+     *
+     * Single source of truth: the invoice form renders exactly these keys, so the
+     * editable buyer fields on the form and the snapshot built from a customer
+     * cannot drift apart.
+     *
+     * @var list<string>
+     */
+    public const BUYER_SNAPSHOT_KEYS = [
+        'name',
+        'company_name',
+        'street',
+        'city',
+        'zip',
+        'country_code',
+        'vat_number',
+        'tax_number',
+        'business_number',
+        'email',
+        'phone',
+        'web',
+    ];
+
     public function __construct(
         public PayBySquareService $payBySquareService,
     ) {}
@@ -178,19 +202,12 @@ class InvoicePdfService
      */
     public function buildBuyerSnapshot(mixed $customer): array
     {
-        return [
-            'name' => $customer->name,
-            'company_name' => $customer->company_name,
-            'street' => $customer->street,
-            'city' => $customer->city,
-            'zip' => $customer->zip,
-            'country_code' => $customer->country_code,
-            'vat_number' => $customer->vat_number,
-            'tax_number' => $customer->tax_number,
-            'business_number' => $customer->business_number,
-            'email' => $customer->email,
-            'phone' => $customer->phone,
-            'web' => $customer->web,
-        ];
+        $snapshot = [];
+
+        foreach (self::BUYER_SNAPSHOT_KEYS as $key) {
+            $snapshot[$key] = $customer->{$key};
+        }
+
+        return $snapshot;
     }
 }
