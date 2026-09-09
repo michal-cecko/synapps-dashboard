@@ -4,22 +4,17 @@ namespace App\Filament\Invoices\Resources\Invoices\Pages;
 
 use App\Enums\Common\LocaleEnum;
 use App\Enums\Invoices\InvoiceStatusEnum;
+use App\Filament\Invoices\Actions\SendInvoiceEmailAction;
 use App\Filament\Invoices\Concerns\HasCompanyBreadcrumb;
 use App\Filament\Invoices\Resources\Invoices\InvoiceResource;
 use App\Models\Invoices\InvoiceNumberSequence;
 use App\Services\Invoices\InvoiceCalculationService;
-use App\Services\Invoices\InvoiceEmailService;
 use App\Services\Invoices\InvoiceNumberService;
 use App\Services\Invoices\InvoicePdfService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\DeleteAction;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TagsInput;
-use Filament\Forms\Components\TextInput;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Contracts\Support\Htmlable;
 
@@ -65,71 +60,7 @@ class EditInvoice extends EditRecord
                         ]);
                     }),
 
-                Action::make('sendEmail')
-                    ->label('Odoslať emailom')
-                    ->icon('heroicon-o-envelope')
-                    ->form([
-                        TextInput::make('email')
-                            ->label('Email')
-                            ->email()
-                            ->required()
-                            ->default(fn () => $this->getRecord()->customer->email),
-                        TagsInput::make('cc')
-                            ->label('CC')
-                            ->nestedRecursiveRules(['email:rfc'])
-                            ->splitKeys(['Tab', ',', ' '])
-                            ->placeholder('Pridať email'),
-                        TagsInput::make('bcc')
-                            ->label('BCC')
-                            ->nestedRecursiveRules(['email:rfc'])
-                            ->splitKeys(['Tab', ',', ' '])
-                            ->placeholder('Pridať email'),
-                        TextInput::make('subject')
-                            ->label('Predmet')
-                            ->required()
-                            ->default(fn () => 'Faktúra '.$this->getRecord()->invoice_number),
-                        RichEditor::make('body')
-                            ->label('Správa')
-                            ->required()
-                            ->default('<p>V prílohe posielame faktúru. Ďakujeme za spoluprácu.</p>'),
-                        Select::make('locale')
-                            ->label('Jazyk PDF')
-                            ->options(LocaleEnum::translations())
-                            ->default(fn () => $this->getRecord()->company->default_locale ?? 'sk')
-                            ->required(),
-                        FileUpload::make('attachments')
-                            ->label('Prílohy')
-                            ->multiple()
-                            ->storeFiles(false)
-                            ->acceptedFileTypes([
-                                'application/pdf',
-                                'application/msword',
-                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                'application/vnd.ms-excel',
-                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                'image/jpeg',
-                                'image/png',
-                                'application/zip',
-                            ])
-                            ->maxSize(10240),
-                    ])
-                    ->action(function (array $data) {
-                        app(InvoiceEmailService::class)->sendInvoice(
-                            $this->getRecord(),
-                            $data['email'],
-                            $data['subject'],
-                            $data['body'],
-                            $data['locale'],
-                            $data['attachments'] ?? [],
-                            $data['cc'] ?? [],
-                            $data['bcc'] ?? [],
-                        );
-
-                        Notification::make()
-                            ->title('Faktúra bola odoslaná')
-                            ->success()
-                            ->send();
-                    }),
+                SendInvoiceEmailAction::make(),
             ])->label('Viac')->icon('heroicon-o-ellipsis-vertical'),
 
             Action::make('duplicate')
@@ -174,7 +105,9 @@ class EditInvoice extends EditRecord
                     if ($company) {
                         $newInvoice->seller_snapshot = $pdfService->buildSellerSnapshot($company);
                     }
-                    if ($record->customer) {
+                    // The replicated invoice already carries its own buyer data, which may
+                    // have been hand-edited; only rebuild it for invoices that have none.
+                    if (blank($newInvoice->buyer_snapshot) && $record->customer) {
                         $newInvoice->buyer_snapshot = $pdfService->buildBuyerSnapshot($record->customer);
                     }
 
@@ -199,6 +132,26 @@ class EditInvoice extends EditRecord
 
             DeleteAction::make(),
         ];
+    }
+
+    /**
+     * Invoices created before the buyer fields lived on the invoice itself have an
+     * empty snapshot; seed the form from the customer so the fields aren't blank.
+     * Anything already stored on the invoice is left untouched.
+     */
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $storedBuyerSnapshot = array_filter(
+            $data['buyer_snapshot'] ?? [],
+            fn ($value): bool => filled($value),
+        );
+
+        if (empty($storedBuyerSnapshot) && $this->getRecord()->customer) {
+            $data['buyer_snapshot'] = app(InvoicePdfService::class)
+                ->buildBuyerSnapshot($this->getRecord()->customer);
+        }
+
+        return $data;
     }
 
     protected function mutateFormDataBeforeSave(array $data): array

@@ -35,7 +35,16 @@ class CreateInvoice extends CreateRecord
             $pdfService = app(InvoicePdfService::class);
             $data['seller_snapshot'] = $pdfService->buildSellerSnapshot($company);
 
-            if (! empty($data['customer_id'])) {
+            // The form carries the buyer data itself (prefilled from the customer, then
+            // freely editable), so whatever was submitted wins — including fields the
+            // user deliberately blanked out. Only fall back to building the snapshot
+            // from the customer when the form supplied nothing at all.
+            $submittedBuyerSnapshot = array_filter(
+                $data['buyer_snapshot'] ?? [],
+                fn ($value): bool => filled($value),
+            );
+
+            if (empty($submittedBuyerSnapshot) && ! empty($data['customer_id'])) {
                 $customer = Customer::find($data['customer_id']);
                 if ($customer) {
                     $data['buyer_snapshot'] = $pdfService->buildBuyerSnapshot($customer);
